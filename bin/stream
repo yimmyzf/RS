@@ -1,0 +1,47 @@
+## STREAM :                                                      #####
+##       This is the exection stream of RS                       #####
+##       output: query+RS+relativeParams in ../data/rsresultfile #####
+## History:                                                      #####
+## 2014/08/22   Mauthor   FirstRelease                           #####
+
+export LANG=zh_CN.utf-8
+
+$HADOOP_BIN fs -rmr $BASIC_OUTPUT_PATH
+$HADOOP_BIN streaming \
+		-D mapred.job.reduce.tasks=0 \
+		
+if [ $? -ne 0 ]
+then
+else
+fi
+
+$HADOOP_BIN fs -rmr $CONTISRCH_OUTPUT_PATH
+$HADOOP_BIN streaming \
+		-input ${CONTISRCH_INPUT_PATH} \
+		-output ${CONTISRCH_OUTPUT_PATH} \
+		-mapper "python mapper_contisrch.py" \
+		-reducer "python reducer_contisrch.py" \
+		-file "mapper_contisrch.py" \
+		-file "reducer_contisrch.py"
+
+local_file="${CONTISRCH_DATA_PATH}/conti_search_$today"
+rm -rf "$local_file"
+$HADOOP_BIN fs -getmerge ${CONTISRCH_OUTPUT_PATH} $local_file
+
+##delete the data 7days before and union  a week data to union.data
+find ${CONTISRCH_DATA_PATH} -mtime +6 -type f -exec rm -f {} \;
+rm ${DATA_PATH}/union.data
+
+cat ${CONTISRCH_DATA_PATH}/* > ${DATA_PATH}/union.data
+cat ${DATA_PATH}/union.data | awk -F '\t' '{print $3}'|uniq >out
+LANG=zh_CN.utf-8 sort -u out >orikey
+cat out | python ridrepeatednew.py | uniq|python forquery1.py >re_forq
+python sortforquery.py|uniq -c|python sortquery.py>out1
+echo "out1 finish"
+python filter.py|python gettop10.py > middleout
+awk -F '\t' 'NF {print $1"\t"$4}' middleout|uniq|sort -t $'\t' -k 2nr |sed -n 1,100p|awk -F '\t' '{print $1}'>top.tmp
+cat middleout | python filluprs.py >result
+today=`date --date "0 day ago" +%Y%m%d`
+python rsfinalnew.py>${DATA_PATH}/rsresult_$today
+
+
